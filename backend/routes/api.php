@@ -40,6 +40,10 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/notificaciones/leer-todas', [NotificationController::class, 'markAll']);
     Route::put('/notificaciones/{id}/leer', [NotificationController::class, 'markRead']);
 
+    // Comprobantes privados: el controlador verifica si el usuario es
+    // personal autorizado o el cliente dueño del pedido.
+    Route::get('/pagos/{id}/comprobante', [PaymentController::class, 'proof']);
+
     Route::middleware('role:cliente')->group(function () {
         Route::put('/auth/cliente/perfil', [AuthController::class, 'updateClientProfile']);
         Route::get('/auth/cliente/pedidos', [AuthController::class, 'clientOrders']);

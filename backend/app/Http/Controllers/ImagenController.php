@@ -2,15 +2,22 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
 use App\Models\Imagen;
 use App\Models\Producto;
-use Illuminate\Support\Facades\Storage; // Importante para gestionar el borrado de archivos viejos
+use App\Services\MediaStorage;
+use Illuminate\Http\Request;
 
 class ImagenController extends Controller
 {
-    public function subirImagen(Request $request) {
-        $ruta = $request->file('imagen')->store('productos', 'public');
+    public function __construct(private MediaStorage $media) {}
+
+    public function subirImagen(Request $request)
+    {
+        $request->validate([
+            'imagen' => ['required', 'file', 'max:12288'],
+        ]);
+
+        $ruta = $this->media->storePublic($request->file('imagen'), 'productos');
 
         return response()->json([
             'mensaje' => 'Imagen subida correctamente.',
@@ -18,34 +25,29 @@ class ImagenController extends Controller
         ]);
     }
 
-    public function subirProducto(Request $request) {
-        $ruta = $request->file('imagen')->store('productos', 'public');
+    public function subirProducto(Request $request)
+    {
+        $request->validate([
+            'imagen' => ['required', 'file', 'max:12288'],
+        ]);
 
-        if ($ruta === false) {
-            return response()->json([
-                'mensaje' => 'Error en subir la imagen.',
-                'OK' => false,
-            ]);
-        } else {
-            $producto = Producto::create($request->all());
-            $id_producto = $producto->id;
+        $ruta = $this->media->storePublic($request->file('imagen'), 'productos');
 
-            $datosParaImagen = [
-                'ruta' => $ruta,
-                'id_producto' => $id_producto,
-            ];
+        $producto = Producto::create($request->except('imagen'));
 
-            $textImage = Imagen::create($datosParaImagen);
+        Imagen::create([
+            'ruta' => $ruta,
+            'id_producto' => $producto->id,
+        ]);
 
-            return response()->json([
-                'mensaje' => 'Registro Correcto.',
-                'OK' => true,
-            ]);
-        }
+        return response()->json([
+            'mensaje' => 'Registro correcto.',
+            'OK' => true,
+        ]);
     }
 
-    // NUEVO MÉTODO: Actualizar Producto e Imagen asociada
-    public function actualizarProducto(Request $request, $id) {
+    public function actualizarProducto(Request $request, $id)
+    {
         $producto = Producto::find($id);
 
         if (!$producto) {
@@ -55,31 +57,24 @@ class ImagenController extends Controller
             ], 404);
         }
 
-        // 1. Actualizar los datos del producto base (Nombre, Precio, Stock, etc.)
-        $producto->update($request->all());
+        $producto->update($request->except('imagen'));
 
-        // 2. Evaluar si se envió una nueva imagen en el formulario binario
         if ($request->hasFile('imagen')) {
-            // Buscamos si el producto ya tiene un registro de imagen en la tabla 'imagenes'
+            $request->validate([
+                'imagen' => ['file', 'max:12288'],
+            ]);
+
             $imagenExistente = Imagen::where('id_producto', $producto->id)->first();
+            $nuevaRuta = $this->media->storePublic($request->file('imagen'), 'productos');
 
             if ($imagenExistente) {
-                // Si el archivo físico existe en el almacenamiento, lo eliminamos para no acumular basura
-                if (Storage::disk('public')->exists($imagenExistente->ruta)) {
-                    Storage::disk('public')->delete($imagenExistente->ruta);
-                }
-                
-                // Almacenamos el nuevo archivo binario
-                $nuevaRuta = $request->file('imagen')->store('productos', 'public');
-                
-                // Actualizamos el registro de la base de datos con la nueva ruta
+                $rutaAnterior = $imagenExistente->ruta;
                 $imagenExistente->update(['ruta' => $nuevaRuta]);
+                $this->media->deletePublic($rutaAnterior);
             } else {
-                // En caso de que el producto no tuviera imagen previa, guardamos la nueva y creamos el registro
-                $nuevaRuta = $request->file('imagen')->store('productos', 'public');
                 Imagen::create([
                     'ruta' => $nuevaRuta,
-                    'id_producto' => $producto->id
+                    'id_producto' => $producto->id,
                 ]);
             }
         }

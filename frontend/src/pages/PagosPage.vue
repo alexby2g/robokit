@@ -22,7 +22,7 @@
         <template #body-cell-cliente="p"><q-td :props="p"><div>{{ p.row.Nombre }} {{ p.row.Apellido }}</div><div class="text-caption text-muted">{{ p.row.Telefono || '-' }}</div></q-td></template>
         <template #body-cell-monto="p"><q-td :props="p" class="text-green-3 text-weight-bold">Bs {{ money(p.row.monto) }}</q-td></template>
         <template #body-cell-estado="p"><q-td :props="p"><q-chip dense :color="paymentColor(p.row.estado)" text-color="white">{{ p.row.estado }}</q-chip></q-td></template>
-        <template #body-cell-comprobante="p"><q-td :props="p"><q-btn v-if="p.row.comprobante" flat dense color="cyan-4" icon="open_in_new" label="Ver" :href="mediaUrl(p.row.comprobante)" target="_blank"/><span v-else class="text-grey-6">Sin archivo</span></q-td></template>
+        <template #body-cell-comprobante="p"><q-td :props="p"><q-btn v-if="p.row.comprobante" flat dense color="cyan-4" icon="open_in_new" label="Ver" @click="viewProof(p.row)"/><span v-else class="text-grey-6">Sin archivo</span></q-td></template>
         <template #body-cell-acciones="p"><q-td :props="p"><q-btn flat round dense color="amber-4" icon="edit" @click="openEdit(p.row)"><q-tooltip>Cambiar estado</q-tooltip></q-btn></q-td></template>
       </q-table>
     </q-card>
@@ -49,7 +49,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useQuasar } from 'quasar'
 import api from '../services/api'
-import { mediaUrl } from '../utils/media'
+import { openProtectedFile } from '../utils/download'
 
 const $q=useQuasar(),rows=ref([]),loading=ref(false),saving=ref(false),search=ref(''),filter=ref('Todos'),dialog=ref(false),selected=ref(null),newState=ref('Pendiente'),note=ref('')
 const stateOptions=['Pendiente','Reportado','Verificado','Rechazado','Reembolsado']
@@ -61,6 +61,7 @@ const count=s=>rows.value.filter(r=>r.estado===s).length
 const filtered=computed(()=>{const q=search.value.trim().toLowerCase();return rows.value.filter(r=>(filter.value==='Todos'||r.estado===filter.value)&&(!q||`${r.pedido_id} ${r.Nombre||''} ${r.Apellido||''} ${r.Telefono||''} ${r.referencia||''}`.toLowerCase().includes(q)))})
 const load=async()=>{loading.value=true;try{rows.value=(await api.get('/pagos')).data.pagos||[]}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudieron cargar los pagos.'})}finally{loading.value=false}}
 const openEdit=r=>{selected.value=r;newState.value=r.estado;note.value=r.nota||'';dialog.value=true}
+const viewProof=async r=>{try{await openProtectedFile(api,`/pagos/${r.id}/comprobante`)}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo abrir el comprobante.'})}}
 const save=async()=>{saving.value=true;try{await api.put(`/pagos/${selected.value.id}/estado`,{estado:newState.value,nota:note.value||null});dialog.value=false;$q.notify({type:'positive',message:'Pago actualizado y cliente notificado.'});await load()}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo actualizar el pago.'})}finally{saving.value=false}}
 onMounted(load)
 </script>

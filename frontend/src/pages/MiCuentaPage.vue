@@ -58,7 +58,7 @@
 
               <q-tab-panel name="pagos">
                 <div v-if="payments.length" class="q-gutter-md">
-                  <q-card v-for="pg in payments" :key="pg.id" flat class="payment-card q-pa-md"><div class="row items-center justify-between"><div><div class="text-weight-bold">Pedido #{{pg.pedido_id}} · {{pg.metodo}}</div><div class="text-caption text-grey-5">{{pg.codigo_seguimiento}}</div></div><div class="text-right"><q-chip dense :color="paymentColor(pg.estado)" text-color="white">{{pg.estado}}</q-chip><div class="text-green-3 text-weight-bold">Bs {{money(pg.monto)}}</div></div></div><div v-if="pg.referencia" class="text-caption q-mt-sm">Referencia: {{pg.referencia}}</div><q-btn v-if="pg.comprobante" class="q-mt-sm" flat dense color="cyan-4" icon="open_in_new" label="Ver comprobante" :href="mediaUrl(pg.comprobante)" target="_blank"/></q-card>
+                  <q-card v-for="pg in payments" :key="pg.id" flat class="payment-card q-pa-md"><div class="row items-center justify-between"><div><div class="text-weight-bold">Pedido #{{pg.pedido_id}} · {{pg.metodo}}</div><div class="text-caption text-grey-5">{{pg.codigo_seguimiento}}</div></div><div class="text-right"><q-chip dense :color="paymentColor(pg.estado)" text-color="white">{{pg.estado}}</q-chip><div class="text-green-3 text-weight-bold">Bs {{money(pg.monto)}}</div></div></div><div v-if="pg.referencia" class="text-caption q-mt-sm">Referencia: {{pg.referencia}}</div><q-btn v-if="pg.comprobante" class="q-mt-sm" flat dense color="cyan-4" icon="open_in_new" label="Ver comprobante" @click="viewProof(pg)"/></q-card>
                 </div>
                 <div v-else class="q-pa-xl text-center text-grey-5">Todavía no tienes pagos registrados.</div>
               </q-tab-panel>
@@ -97,7 +97,7 @@ import { useQuasar } from 'quasar'
 import { useRouter } from 'vue-router'
 import { clientApi } from '../services/api'
 import { authState, logoutClient, refreshClientSession } from '../services/auth'
-import { mediaUrl } from '../utils/media'
+import { openProtectedFile } from '../utils/download'
 
 const $q=useQuasar(),router=useRouter(),tab=ref('pedidos'),orders=ref([]),payments=ref([]),notifications=ref([]),unread=ref(0),loading=ref(false),saving=ref(false),paymentDialog=ref(false),selectedOrder=ref(null),reporting=ref(false)
 const profile=reactive({Nombre:'',Apellido:'',Telefono:'',Direccion_envio:'',Email:''})
@@ -112,6 +112,7 @@ const saveProfile=async()=>{saving.value=true;try{const{data}=await clientApi.pu
 const canReportPayment=p=>p?.Estado!=='Cancelado'&&p?.pago?.estado!=='Verificado'&&p?.pago?.estado!=='Reembolsado'
 const openPayment=p=>{selectedOrder.value=p;paymentForm.metodo=p?.pago?.metodo||p?.metodo_pago||'QR';paymentForm.referencia=p?.pago?.referencia||'';paymentForm.comprobante=null;paymentForm.nota=p?.pago?.nota||'';paymentDialog.value=true}
 const reportPayment=async()=>{if(!selectedOrder.value)return;reporting.value=true;try{const fd=new FormData();fd.append('metodo',paymentForm.metodo);if(paymentForm.referencia)fd.append('referencia',paymentForm.referencia);if(paymentForm.nota)fd.append('nota',paymentForm.nota);if(paymentForm.comprobante)fd.append('comprobante',paymentForm.comprobante);const{data}=await clientApi.post(`/auth/cliente/pedidos/${selectedOrder.value.id}/pago`,fd);paymentDialog.value=false;$q.notify({type:'positive',message:data.message||'Pago reportado.'});await load();tab.value='pagos'}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo reportar el pago.'})}finally{reporting.value=false}}
+const viewProof=async pg=>{try{await openProtectedFile(clientApi,`/pagos/${pg.id}/comprobante`)}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo abrir el comprobante.'})}}
 const signOut=async()=>{await logoutClient();router.replace('/tienda')}
 onMounted(load)
 </script>

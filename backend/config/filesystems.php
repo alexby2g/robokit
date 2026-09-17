@@ -51,16 +51,57 @@ return [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
+            'region' => env('AWS_DEFAULT_REGION', 'auto'),
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
-            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', true),
             'throw' => false,
             'report' => false,
         ],
 
+        // Cloudflare R2 - archivos públicos del catálogo y capacitación.
+        'r2_public' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION', 'auto'),
+            'bucket' => env('AWS_PUBLIC_BUCKET'),
+            'url' => env('AWS_PUBLIC_URL'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', true),
+            'throw' => true,
+            'report' => true,
+        ],
+
+        // Cloudflare R2 - comprobantes y documentos que no deben ser públicos.
+        'r2_private' => [
+            'driver' => 's3',
+            'key' => env('AWS_ACCESS_KEY_ID'),
+            'secret' => env('AWS_SECRET_ACCESS_KEY'),
+            'region' => env('AWS_DEFAULT_REGION', 'auto'),
+            'bucket' => env('AWS_PRIVATE_BUCKET'),
+            'endpoint' => env('AWS_ENDPOINT'),
+            'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', true),
+            'throw' => true,
+            'report' => true,
+        ],
+
     ],
+
+    // Selección de almacenamiento ROBOKIT. En local puede seguir usando
+    // public/local; en Render las variables *_FILESYSTEM_DRIVER=s3
+    // cambian automáticamente a los buckets R2.
+    'robokit' => [
+        'public_disk' => env('PUBLIC_FILESYSTEM_DRIVER', 'public') === 's3'
+            ? 'r2_public'
+            : env('PUBLIC_FILESYSTEM_DRIVER', 'public'),
+        'private_disk' => env('PRIVATE_FILESYSTEM_DRIVER', 'local') === 's3'
+            ? 'r2_private'
+            : env('PRIVATE_FILESYSTEM_DRIVER', 'local'),
+        'public_url' => env('AWS_PUBLIC_URL'),
+    ],
+
 
     /*
     |--------------------------------------------------------------------------

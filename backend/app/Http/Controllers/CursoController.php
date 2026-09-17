@@ -5,12 +5,14 @@ namespace App\Http\Controllers;
 use App\Models\Curso;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Services\MediaStorage;
 
 class CursoController extends Controller
 {
+    public function __construct(private MediaStorage $media) {}
+
     private const IMAGE_EXTENSIONS = ['jpg', 'jpeg', 'jfif', 'png', 'webp', 'gif', 'bmp', 'avif', 'heic', 'heif', 'tif', 'tiff'];
 
     public function listar(): JsonResponse
@@ -164,7 +166,7 @@ class CursoController extends Controller
             ]);
         }
 
-        $path = $file->store('cursos', 'public');
+        $path = $this->media->storePublic($file, 'cursos');
         $this->deleteStoredCourseImage($oldImage);
         return $path;
     }
@@ -172,7 +174,7 @@ class CursoController extends Controller
     private function deleteStoredCourseImage(?string $path): void
     {
         if ($path && str_starts_with($path, 'cursos/')) {
-            Storage::disk('public')->delete($path);
+            $this->media->deletePublic($path);
         }
     }
 

@@ -3,14 +3,17 @@
 namespace App\Http\Controllers;
 
 use App\Services\NotificationService;
+use App\Services\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 
 class PaymentController extends Controller
 {
-    public function __construct(private NotificationService $notifications) {}
+    public function __construct(
+        private NotificationService $notifications,
+        private MediaStorage $media,
+    ) {}
 
     public function index(Request $request)
     {
@@ -63,8 +66,13 @@ class PaymentController extends Controller
         $pago = DB::table('pagos')->where('pedido_id', $pedidoId)->first();
         $path = $pago->comprobante ?? null;
         if ($request->hasFile('comprobante')) {
-            if ($path && str_starts_with($path, 'pagos/')) Storage::disk('public')->delete($path);
-            $path = $request->file('comprobante')->store('pagos', 'public');
+            if ($path) {
+                // Desde v5.6 los comprobantes son privados. También intentamos
+                // limpiar el storage público antiguo para compatibilidad v5.5.
+                $this->media->deletePrivate($path);
+                $this->media->deletePublic($path);
+            }
+            $path = $this->media->storePrivate($request->file('comprobante'), 'pagos');
         }
 
         $values = [
@@ -89,6 +97,40 @@ class PaymentController extends Controller
         }
 
         return response()->json(['message' => $data['metodo'] === 'Efectivo' ? 'Pago en efectivo registrado como pendiente.' : 'Pago reportado. Espera la verificación del personal.']);
+    }
+
+    public function proof(Request $request, int $id)
+    {
+        $pago = DB::table('pagos as pg')
+            ->join('pedido as p', 'p.id', '=', 'pg.pedido_id')
+            ->where('pg.id', $id)
+            ->select('pg.*', 'p.id_usuario')
+            ->first();
+
+        abort_if(!$pago, 404, 'Pago no encontrado.');
+        abort_if(!$pago->comprobante, 404, 'Este pago no tiene comprobante.');
+
+        $user = $request->user();
+        $isStaff = $user && in_array($user->role, ['admin', 'trabajador', 'caja', 'almacen'], true);
+        $isOwner = $user
+            && $user->role === 'cliente'
+            && $user->usuario_id
+            && (int) $user->usuario_id === (int) $pago->id_usuario;
+
+        abort_unless($isStaff || $isOwner, 403, 'No tienes permiso para ver este comprobante.');
+
+        try {
+            $file = $this->media->privateFile($pago->comprobante);
+        } catch (\RuntimeException) {
+            abort(404, 'Comprobante no encontrado.');
+        }
+
+        return response($file['contents'], 200, [
+            'Content-Type' => $file['mime'],
+            'Content-Disposition' => 'inline; filename="'.$file['filename'].'"',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function updateStatus(Request $request, int $id)

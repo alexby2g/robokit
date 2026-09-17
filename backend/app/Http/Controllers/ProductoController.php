@@ -5,13 +5,15 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
+use App\Services\MediaStorage;
 
 class ProductoController extends Controller
 {
+    public function __construct(private MediaStorage $media) {}
+
     public function index()
     {
         $productos = DB::table('producto')->orderByDesc('id')->get();
@@ -133,7 +135,7 @@ class ProductoController extends Controller
             DB::table('imagenes')->where('id_producto', $id)->delete();
             DB::table('producto')->where('id', $id)->delete();
         });
-        foreach ($paths as $path) Storage::disk('public')->delete($path);
+        foreach ($paths as $path) $this->media->deletePublic($path);
 
         return response()->json(['message' => 'Producto eliminado.']);
     }
@@ -210,7 +212,7 @@ class ProductoController extends Controller
             }
 
             $filename = Str::uuid()->toString().'.'.$extension;
-            $path = $file->storeAs('productos', $filename, 'public');
+            $path = $this->media->storePublicAs($file, 'productos', $filename);
             $isFirst = DB::table('imagenes')->where('id_producto', $productoId)->doesntExist();
             DB::table('imagenes')->insert([
                 'ruta' => $path,
@@ -226,7 +228,7 @@ class ProductoController extends Controller
         $image = DB::table('imagenes')->where('id', $imagenId)->where('id_producto', $productoId)->first();
         if (!$image) return;
         DB::table('imagenes')->where('id', $imagenId)->delete();
-        if ($image->ruta) Storage::disk('public')->delete($image->ruta);
+        if ($image->ruta) $this->media->deletePublic($image->ruta);
     }
 
     private function setMainImageInternal(int $productoId, int $imagenId): void
