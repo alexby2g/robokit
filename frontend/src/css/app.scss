@@ -1,0 +1,28 @@
+body { background: #07101d; color: #e5edf7; }
+.app-shell, .page-container { background: #07101d; min-height: 100vh; }
+.topbar { background: rgba(7,16,29,.94); backdrop-filter: blur(14px); border-bottom: 1px solid rgba(56,189,248,.18); }
+.sidebar { background: #0b1422 !important; border-right: 1px solid rgba(56,189,248,.15) !important; }
+.sidebar-head { border-bottom: 1px solid #1f2c3f; }
+.sidebar-scroll { height: calc(100vh - 145px); }
+.sidebar-footer { border-top: 1px solid #1f2c3f; }
+.brand-mark { background: linear-gradient(135deg,#0891b2,#2563eb); color: white; box-shadow: 0 0 20px rgba(14,165,233,.22); }
+.brand-name { font-size: .93rem; font-weight: 800; letter-spacing: .07em; }
+.brand-sub { font-size: .67rem; color: #8091a8; }
+.menu-label { font-size: .68rem; letter-spacing: .13em; color: #64748b; font-weight: 700; }
+.menu-item { color:#a9b7ca; border-radius:10px; margin-bottom:4px; min-height:58px; transition:.18s ease; }
+.menu-item:hover { background: rgba(56,189,248,.07); color:#e7f7ff; }
+.menu-item-active { background: linear-gradient(90deg,rgba(6,182,212,.18),rgba(37,99,235,.08)) !important; color:#67e8f9 !important; border-left:3px solid #22d3ee; }
+.menu-item .q-item__label--caption { color:#65758a; font-size:.68rem; }
+.page-title { font-weight: 800; color:#f8fafc; letter-spacing:-.02em; }
+.page-subtitle { color:#8da0b8; }
+.panel { background:#0d1828 !important; border:1px solid #1e3148; border-radius:14px; }
+.metric-card { background:linear-gradient(145deg,#0d1828,#0a1422); border:1px solid #1c3148; border-radius:14px; cursor:pointer; transition:.18s ease; }
+.metric-card:hover { transform:translateY(-2px); border-color:#38bdf8; }
+.metric-label { color:#8ea1b8; font-size:.72rem; text-transform:uppercase; letter-spacing:.08em; }
+.metric-value { font-size:1.8rem; font-weight:800; color:#fff; }
+.soft-chip { background:#132338; color:#a9c2df; border:1px solid #233b57; }
+.table-dark { background:#0d1828; }
+.action-primary { background:linear-gradient(135deg,#0891b2,#2563eb) !important; color:white !important; }
+.text-muted { color:#8496ad; }
+.stock-low { color:#fca5a5; }
+.stock-ok { color:#86efac; }
