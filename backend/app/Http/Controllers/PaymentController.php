@@ -50,26 +50,28 @@ class PaymentController extends Controller
 
         $pedido = DB::table('pedido')->where('id', $pedidoId)->where('id_usuario', $user->usuario_id)->where('canal', 'Online')->first();
         abort_if(!$pedido, 404, 'Pedido no encontrado.');
+        abort_if((string) $pedido->Estado === 'Cancelado', 422, 'No puedes reportar un pago para un pedido cancelado.');
+
+        $pago = DB::table('pagos')->where('pedido_id', $pedidoId)->first();
+        if ($pago && in_array((string) $pago->estado, ['Reportado', 'Verificado', 'Reembolsado'], true)) {
+            $message = $pago->estado === 'Reportado'
+                ? 'El comprobante ya fue enviado y está pendiente de verificación.'
+                : 'Este pedido ya tiene un pago procesado.';
+            return response()->json(['message' => $message], 422);
+        }
 
         $data = $request->validate([
-            'metodo' => ['required', Rule::in(['QR', 'Transferencia', 'Efectivo'])],
             'referencia' => ['nullable', 'string', 'max:120'],
             'nota' => ['nullable', 'string', 'max:600'],
-            'comprobante' => ['nullable', 'file', 'max:8192', 'mimes:jpg,jpeg,png,webp,pdf'],
+            'comprobante' => ['required', 'file', 'max:8192', 'mimes:jpg,jpeg,png,webp,pdf'],
         ], [
-            'metodo.required' => 'Selecciona el método de pago.',
-            'metodo.in' => 'El método de pago seleccionado no es válido.',
             'referencia.max' => 'La referencia no debe superar 120 caracteres.',
             'nota.max' => 'La nota no debe superar 600 caracteres.',
+            'comprobante.required' => 'Debes subir el comprobante de pago.',
             'comprobante.max' => 'El comprobante no debe superar 8 MB.',
             'comprobante.mimes' => 'El comprobante debe ser JPG, PNG, WEBP o PDF.',
         ]);
 
-        if (in_array($data['metodo'], ['QR', 'Transferencia'], true) && !$request->hasFile('comprobante')) {
-            return response()->json(['message' => 'Debes adjuntar el comprobante de pago para enviar la solicitud de verificación.'], 422);
-        }
-
-        $pago = DB::table('pagos')->where('pedido_id', $pedidoId)->first();
         $path = $pago->comprobante ?? null;
         if ($request->hasFile('comprobante')) {
             if ($path) {
@@ -83,26 +85,24 @@ class PaymentController extends Controller
 
         $values = [
             'usuario_id' => $user->usuario_id,
-            'metodo' => $data['metodo'],
+            'metodo' => 'QR',
             'monto' => $pedido->Total,
-            'estado' => $data['metodo'] === 'Efectivo' ? 'Pendiente' : 'Reportado',
+            'estado' => 'Reportado',
             'referencia' => $data['referencia'] ?? null,
             'comprobante' => $path,
             'nota' => $data['nota'] ?? null,
-            'reportado_at' => $data['metodo'] === 'Efectivo' ? null : now(),
+            'reportado_at' => now(),
             'updated_at' => now(),
         ];
 
         if ($pago) DB::table('pagos')->where('id', $pago->id)->update($values);
         else DB::table('pagos')->insert(['pedido_id' => $pedidoId, 'created_at' => now(), ...$values]);
 
-        DB::table('pedido')->where('id', $pedidoId)->update(['metodo_pago' => $data['metodo']]);
+        DB::table('pedido')->where('id', $pedidoId)->update(['metodo_pago' => 'QR']);
 
-        if ($data['metodo'] !== 'Efectivo') {
-            $this->notifications->staff('pago_reportado', 'Pago reportado', "Pedido #{$pedidoId} reportó un pago de Bs {$pedido->Total}.", '/admin/pedidos-online', ['pedido_id' => $pedidoId]);
-        }
+        $this->notifications->staff('pago_reportado', 'Pago reportado', "Pedido #{$pedidoId} reportó un pago por QR de Bs {$pedido->Total}.", '/admin/pedidos-online', ['pedido_id' => $pedidoId]);
 
-        return response()->json(['message' => $data['metodo'] === 'Efectivo' ? 'Pago en efectivo registrado como pendiente.' : 'Pago reportado. Espera la verificación del personal.']);
+        return response()->json(['message' => 'Comprobante enviado. El pago quedó pendiente de verificación.']);
     }
 
     public function proof(Request $request, int $id)
@@ -151,6 +151,7 @@ class PaymentController extends Controller
 
         $pago = DB::table('pagos')->where('id', $id)->first();
         abort_if(!$pago, 404, 'Pago no encontrado.');
+        abort_if($data['estado'] === 'Verificado' && !$pago->comprobante, 422, 'No se puede verificar un pago sin comprobante.');
         $pedido = DB::table('pedido')->where('id', $pago->pedido_id)->first();
         abort_if(!$pedido, 404, 'Pedido no encontrado.');
 

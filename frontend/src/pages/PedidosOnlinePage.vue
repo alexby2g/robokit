@@ -13,7 +13,6 @@
         <template #body-cell-Fecha="p"><q-td :props="p">{{ formatDate(p.row.Fecha) }}</q-td></template>
         <template #body-cell-entrega="p"><q-td :props="p"><q-chip dense outline color="cyan-4">{{ p.row.tipo_entrega || 'Recojo' }}</q-chip></q-td></template>
         <template #body-cell-Estado="p"><q-td :props="p"><q-chip dense :color="statusColor(p.row.Estado)" text-color="white">{{ p.row.Estado }}</q-chip></q-td></template>
-        <template #body-cell-estado_operacion="p"><q-td :props="p"><q-chip dense :color="p.row.estado_operacion==='Finalizado'?'green-8':'blue-8'" text-color="white">{{p.row.estado_operacion||'Activo'}}</q-chip></q-td></template>
         <template #body-cell-EstadoPago="p"><q-td :props="p"><q-chip dense :color="paymentColor(p.row.EstadoPago)" text-color="white">{{ p.row.EstadoPago || 'Pendiente' }}</q-chip><div class="text-caption text-muted">{{ p.row.MetodoPago || p.row.metodo_pago || '-' }}</div></q-td></template>
         <template #body-cell-Total="p"><q-td :props="p" class="text-green-3 text-weight-bold">Bs {{ money(p.row.Total) }}</q-td></template>
       </q-table>
@@ -25,20 +24,6 @@
         <q-separator dark />
         <q-card-section>
           <div class="row q-col-gutter-md q-mb-md"><div class="col-12 col-sm-6"><div class="text-caption text-muted">Fecha</div><div>{{formatDate(detail?.Fecha)}}</div></div><div class="col-12 col-sm-6"><div class="text-caption text-muted">Teléfono</div><div>{{ detail?.Telefono || '-' }}</div></div><div class="col-12 col-sm-6"><div class="text-caption text-muted">Entrega</div><div>{{ detail?.tipo_entrega || '-' }}</div></div><div class="col-12 col-sm-6"><div class="text-caption text-muted">Pago</div><div>{{detail?.EstadoPago || 'Pendiente'}} · {{detail?.MetodoPago || detail?.metodo_pago || '-'}}</div></div><div class="col-12"><div class="text-caption text-muted">Dirección</div><div>{{ detail?.direccion_entrega || detail?.Direccion_envio || 'Recojo en tienda' }}</div></div><div v-if="detail?.notas_cliente" class="col-12"><div class="text-caption text-muted">Nota</div><div>{{ detail.notas_cliente }}</div></div></div>
-          <q-card flat class="payment-review q-pa-md q-mb-md">
-            <div class="row items-center justify-between q-col-gutter-md">
-              <div class="col-12 col-md">
-                <div class="text-weight-bold">Pago del pedido</div>
-                <div class="text-caption text-grey-5">Estado: {{detail?.EstadoPago||'Pendiente'}} · Método: {{detail?.MetodoPago||detail?.metodo_pago||'QR'}}</div>
-              </div>
-              <div class="col-12 col-md-auto row q-gutter-sm">
-                <q-btn v-if="detail?.ComprobantePago && detail?.pago_id" outline color="cyan-4" icon="open_in_new" label="Ver comprobante" @click="viewPaymentProof(detail)"/>
-                <q-btn v-if="detail?.pago_id && detail?.EstadoPago==='Reportado'" color="green-7" icon="verified" label="Confirmar pago" :loading="verifyingPayment" @click="setPaymentStatus(detail,'Verificado')"/>
-                <q-btn v-if="detail?.pago_id && detail?.EstadoPago==='Reportado'" outline color="red-4" icon="close" label="Rechazar" :loading="verifyingPayment" @click="setPaymentStatus(detail,'Rechazado')"/>
-              </div>
-            </div>
-            <q-banner v-if="detail?.EstadoPago==='Reportado'" rounded class="q-mt-md bg-orange-10 text-white"><template #avatar><q-icon name="payments"/></template>Al confirmar el pago, el pedido pasará automáticamente a <b>Confirmado</b> y recién se reservará el stock.</q-banner>
-          </q-card>
           <q-list bordered separator dark><q-item v-for="item in detail?.items || []" :key="item.id_producto"><q-item-section><q-item-label>{{ item.Nombre }}</q-item-label><q-item-label caption>{{ item.cantidad }} × Bs {{ money(item.precio_unitario || item.Precio) }}</q-item-label></q-item-section><q-item-section side class="text-green-3">Bs {{ money(item.subtotal || item.cantidad * (item.precio_unitario || item.Precio)) }}</q-item-section></q-item></q-list>
           <div class="row items-center justify-end q-gutter-sm q-mt-md"><q-btn v-if="detail?.evidencia_entrega" outline color="green-4" icon="photo_camera" label="Ver evidencia" @click="viewEvidence(detail)"/><div class="text-h6">Total: <span class="text-green-3">Bs {{ money(detail?.Total) }}</span></div></div>
         </q-card-section>
@@ -70,7 +55,7 @@ import api from '../services/api'
 import { downloadPdf, openProtectedFile } from '../utils/download'
 
 const $q=useQuasar()
-const rows=ref([]),loading=ref(false),saving=ref(false),search=ref(''),statusFilter=ref('Todos'),detailDialog=ref(false),statusDialog=ref(false),detail=ref(null),selected=ref(null),newStatus=ref('Nuevo'),deliveryPhoto=ref(null),verifyingPayment=ref(false)
+const rows=ref([]),loading=ref(false),saving=ref(false),search=ref(''),statusFilter=ref('Todos'),detailDialog=ref(false),statusDialog=ref(false),detail=ref(null),selected=ref(null),newStatus=ref('Nuevo'),deliveryPhoto=ref(null)
 const money=v=>Number(v||0).toFixed(2)
 const formatDate=v=>{if(!v)return '-';const [y,m,d]=String(v).slice(0,10).split('-');return y&&m&&d?`${d}/${m}/${y}`:v}
 const columns=[
@@ -80,7 +65,6 @@ const columns=[
   {name:'cliente',label:'Cliente',field:'cliente',align:'left'},
   {name:'entrega',label:'Entrega',field:'tipo_entrega',align:'center'},
   {name:'Estado',label:'Pedido',field:'Estado',align:'center'},
-  {name:'estado_operacion',label:'Operación',field:'estado_operacion',align:'center'},
   {name:'EstadoPago',label:'Pago',field:'EstadoPago',align:'center'},
   {name:'Total',label:'Total',field:'Total',align:'right'},
 ]
@@ -99,10 +83,7 @@ const saveStatus=async()=>{if(['Confirmado','Entregado'].includes(newStatus.valu
 const pdf=async row=>{try{await downloadPdf(`/pedidos/${row.id}/pdf`,`pedido-online-${row.id}.pdf`)}catch{$q.notify({type:'negative',message:'No se pudo generar el PDF.'})}}
 const viewEvidence=async row=>{try{await openProtectedFile(api,`/pedidos/${row.id}/evidencia-entrega`)}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo abrir la evidencia.'})}}
 
-const viewPaymentProof=async row=>{try{await openProtectedFile(api,`/pagos/${row.pago_id}/comprobante`)}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo abrir el comprobante.'})}}
-const setPaymentStatus=async(row,estado)=>{verifyingPayment.value=true;try{const{data}=await api.put(`/pagos/${row.pago_id}/estado`,{estado});$q.notify({type:'positive',message:data.message||'Pago actualizado.'});await load();detail.value=(await api.get(`/pedidos/${row.id}`)).data}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo actualizar el pago.'})}finally{verifyingPayment.value=false}}
-
 onMounted(load)
 </script>
 
-<style scoped>.payment-review{background:#091725;border:1px solid #20364e;border-radius:12px}.detail-card{width:820px;max-width:96vw;border-radius:16px}</style>
+<style scoped>.detail-card{width:820px;max-width:96vw;border-radius:16px}</style>

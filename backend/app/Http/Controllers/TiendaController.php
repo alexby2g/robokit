@@ -80,7 +80,7 @@ class TiendaController extends Controller
             'tipo_entrega' => ['required', Rule::in(['Recojo', 'Delivery'])],
             'direccion_entrega' => ['nullable', 'string', 'max:500'],
             'notas_cliente' => ['nullable', 'string', 'max:800'],
-            'metodo_pago' => ['nullable', Rule::in(['QR', 'Transferencia', 'Efectivo'])],
+            'metodo_pago' => ['nullable', Rule::in(['QR'])],
             'items' => ['required', 'array', 'min:1'],
             'items.*.id_producto' => ['required', 'integer'],
             'items.*.cantidad' => ['required', 'integer', 'min:1'],
@@ -171,7 +171,7 @@ class TiendaController extends Controller
             $data['tipo_entrega'],
             $data['direccion_entrega'] ?? null,
             $data['notas_cliente'] ?? null,
-            ($data['metodo_pago'] ?? 'QR')
+            'QR'
         );
 
         return response()->json([

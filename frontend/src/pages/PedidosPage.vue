@@ -13,7 +13,6 @@
         <template #body-cell-cliente="p"><q-td :props="p">{{ p.row.usuario?.Nombre ? `${p.row.usuario.Nombre} ${p.row.usuario.Apellido||''}` : p.row.cliente || `Cliente #${p.row.id_usuario}` }}</q-td></template>
         <template #body-cell-Total="p"><q-td :props="p" class="text-green-3 text-weight-bold">Bs {{ money(p.row.Total) }}</q-td></template>
         <template #body-cell-Estado="p"><q-td :props="p"><q-chip dense :color="statusColor(p.row.Estado)" text-color="white">{{ p.row.Estado }}</q-chip></q-td></template>
-        <template #body-cell-estado_operacion="p"><q-td :props="p"><q-chip dense :color="p.row.estado_operacion==='Finalizado'?'green-8':'blue-8'" text-color="white">{{p.row.estado_operacion||'Activo'}}</q-chip></q-td></template>
         <template #body-cell-EstadoPago="p"><q-td :props="p"><q-chip dense :color="paymentColor(p.row.EstadoPago)" text-color="white">{{ p.row.EstadoPago || 'Pendiente' }}</q-chip></q-td></template>
       </q-table>
     </q-card>
@@ -28,7 +27,7 @@
             <div class="col-6 col-md-3"><q-input v-model="form.Fecha" type="date" stack-label outlined dense dark label="Fecha" /></div>
             <div class="col-6 col-md-4"><q-select v-model="form.metodo_pago" :options="['Efectivo','QR','Transferencia']" outlined dense dark label="Método de pago" /></div>
           </div>
-          <q-banner rounded class="q-mt-md bg-blue-grey-10 text-grey-3"><template #avatar><q-icon name="schedule" color="amber-4"/></template>Estado inicial: <b>Pendiente</b>. El pago debe quedar verificado antes de completar la entrega.</q-banner>
+          <q-banner rounded class="q-mt-md bg-blue-grey-10 text-grey-3"><template #avatar><q-icon name="schedule" color="amber-4"/></template>Estado inicial: <b>Pendiente</b>. Verifica el pago desde el módulo Pagos antes de completar la entrega.</q-banner>
           <q-separator dark class="q-my-md"/>
           <div class="row items-center justify-between q-mb-sm"><div class="text-subtitle1 text-weight-bold">Detalle de productos</div><q-btn outline color="cyan-4" icon="add" label="Agregar" @click="addItem" /></div>
           <div v-for="(item,idx) in form.items" :key="idx" class="row q-col-gutter-sm items-center q-mb-sm"><div class="col-12 col-md-6"><q-select v-model="item.id_producto" :options="products" option-value="id" option-label="Nombre" emit-value map-options outlined dense dark label="Producto *" @update:model-value="syncPrice(item)" /></div><div class="col-4 col-md-2"><q-input v-model.number="item.cantidad" type="number" min="1" outlined dense dark label="Cantidad" /></div><div class="col-5 col-md-2"><q-input :model-value="money(item.precio_unitario)" readonly outlined dense dark label="Precio" prefix="Bs" /></div><div class="col-3 col-md-2 row justify-end items-center"><span class="text-green-3 q-mr-sm">{{ money(item.cantidad*item.precio_unitario) }}</span><q-btn flat round dense color="red-4" icon="delete" @click="removeItem(idx)" /></div></div>
@@ -67,7 +66,6 @@ const columns=[
   {name:'Fecha',label:'Fecha',field:'Fecha',align:'left'},
   {name:'cliente',label:'Cliente',field:'cliente',align:'left'},
   {name:'Estado',label:'Estado',field:'Estado',align:'center'},
-  {name:'estado_operacion',label:'Operación',field:'estado_operacion',align:'center'},
   {name:'EstadoPago',label:'Pago',field:'EstadoPago',align:'center'},
   {name:'Total',label:'Total',field:'Total',align:'right'},
 ]
