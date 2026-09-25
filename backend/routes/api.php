@@ -78,6 +78,7 @@ Route::middleware(['auth:sanctum', 'role:admin,trabajador,caja,almacen'])->group
 
     Route::get('/pedidos', [PedidoController::class, 'index']);
     Route::get('/pedidos/{id}', [PedidoController::class, 'show']);
+    Route::get('/pedidos/{id}/evidencia-entrega', [PedidoController::class, 'deliveryProof']);
 
     Route::get('/catalogo/config', [CatalogoController::class, 'show']);
 });
@@ -100,6 +101,7 @@ Route::middleware(['auth:sanctum', 'role:admin,trabajador,almacen'])->group(func
     Route::get('/compras', [CompraController::class, 'index']);
     Route::post('/compras', [CompraController::class, 'store']);
     Route::get('/compras/{id}', [CompraController::class, 'show']);
+    Route::put('/compras/{id}/estado', [CompraController::class, 'updateStatus']);
     Route::get('/compras/{id}/pdf', [CompraController::class, 'pdf']);
 });
 
@@ -117,7 +119,7 @@ Route::middleware(['auth:sanctum', 'role:admin,trabajador,caja'])->group(functio
 
 // ESTADOS DE PEDIDOS ONLINE: caja, almacén o admin
 Route::middleware(['auth:sanctum', 'role:admin,trabajador,caja,almacen'])->group(function () {
-    Route::put('/pedidos/{id}', [PedidoController::class, 'update']);
+    Route::match(['post', 'put'], '/pedidos/{id}', [PedidoController::class, 'update']);
 });
 
 

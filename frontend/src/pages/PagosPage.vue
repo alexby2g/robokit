@@ -19,6 +19,7 @@
         <div class="col-12 col-md-4"><q-select v-model="filter" :options="filterOptions" emit-value map-options outlined dense dark label="Estado del pago"/></div>
       </q-card-section>
       <q-table :rows="filtered" :columns="columns" row-key="id" dark flat :loading="loading" class="table-dark">
+        <template #body-cell-Fecha="p"><q-td :props="p">{{ formatDate(p.row.Fecha) }}</q-td></template>
         <template #body-cell-cliente="p"><q-td :props="p"><div>{{ p.row.Nombre }} {{ p.row.Apellido }}</div><div class="text-caption text-muted">{{ p.row.Telefono || '-' }}</div></q-td></template>
         <template #body-cell-monto="p"><q-td :props="p" class="text-green-3 text-weight-bold">Bs {{ money(p.row.monto) }}</q-td></template>
         <template #body-cell-estado="p"><q-td :props="p"><q-chip dense :color="paymentColor(p.row.estado)" text-color="white">{{ p.row.estado }}</q-chip></q-td></template>
@@ -55,8 +56,8 @@ const $q=useQuasar(),rows=ref([]),loading=ref(false),saving=ref(false),search=re
 const stateOptions=['Pendiente','Reportado','Verificado','Rechazado','Reembolsado']
 const filterOptions=['Todos',...stateOptions].map(v=>({label:v,value:v}))
 const cards=[{label:'Reportados',value:'Reportado',hint:'Esperan revisión'},{label:'Verificados',value:'Verificado',hint:'Pagos confirmados'},{label:'Pendientes',value:'Pendiente',hint:'Sin confirmación'},{label:'Rechazados',value:'Rechazado',hint:'Requieren corrección'}]
-const columns=[{name:'pedido',label:'Pedido',field:'pedido_id',align:'left'},{name:'cliente',label:'Cliente',field:'Nombre',align:'left'},{name:'metodo',label:'Método',field:'metodo',align:'center'},{name:'monto',label:'Monto',field:'monto',align:'right'},{name:'estado',label:'Pago',field:'estado',align:'center'},{name:'comprobante',label:'Comprobante',field:'comprobante',align:'center'},{name:'acciones',label:'Editar',field:'acciones',align:'center'}]
-const money=v=>Number(v||0).toFixed(2),paymentColor=s=>({Pendiente:'blue-grey-7',Reportado:'orange-8',Verificado:'green-8',Rechazado:'red-8',Reembolsado:'purple-8'}[s]||'blue-grey-7')
+const columns=[{name:'acciones',label:'Acciones',field:'acciones',align:'center'},{name:'pedido',label:'Pedido',field:'pedido_id',align:'left'},{name:'cliente',label:'Cliente',field:'Nombre',align:'left'},{name:'metodo',label:'Método',field:'metodo',align:'center'},{name:'monto',label:'Monto',field:'monto',align:'right'},{name:'estado',label:'Pago',field:'estado',align:'center'},{name:'comprobante',label:'Comprobante',field:'comprobante',align:'center'},{name:'Fecha',label:'Fecha',field:'Fecha',align:'left'}]
+const formatDate=v=>{if(!v)return '-';const [y,m,d]=String(v).slice(0,10).split('-');return y&&m&&d?`${d}/${m}/${y}`:v};const money=v=>Number(v||0).toFixed(2),paymentColor=s=>({Pendiente:'blue-grey-7',Reportado:'orange-8',Verificado:'green-8',Rechazado:'red-8',Reembolsado:'purple-8'}[s]||'blue-grey-7')
 const count=s=>rows.value.filter(r=>r.estado===s).length
 const filtered=computed(()=>{const q=search.value.trim().toLowerCase();return rows.value.filter(r=>(filter.value==='Todos'||r.estado===filter.value)&&(!q||`${r.pedido_id} ${r.Nombre||''} ${r.Apellido||''} ${r.Telefono||''} ${r.referencia||''}`.toLowerCase().includes(q)))})
 const load=async()=>{loading.value=true;try{rows.value=(await api.get('/pagos')).data.pagos||[]}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudieron cargar los pagos.'})}finally{loading.value=false}}

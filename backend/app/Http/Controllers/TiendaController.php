@@ -80,7 +80,7 @@ class TiendaController extends Controller
             'tipo_entrega' => ['required', Rule::in(['Recojo', 'Delivery'])],
             'direccion_entrega' => ['nullable', 'string', 'max:500'],
             'notas_cliente' => ['nullable', 'string', 'max:800'],
-            'metodo_pago' => ['required', Rule::in(['QR', 'Transferencia', 'Efectivo'])],
+            'metodo_pago' => ['nullable', Rule::in(['QR', 'Transferencia', 'Efectivo'])],
             'items' => ['required', 'array', 'min:1'],
             'items.*.id_producto' => ['required', 'integer'],
             'items.*.cantidad' => ['required', 'integer', 'min:1'],
@@ -107,8 +107,7 @@ class TiendaController extends Controller
             'tipo_entrega.in' => 'La forma de entrega seleccionada no es válida.',
             'direccion_entrega.max' => 'La dirección no debe superar 500 caracteres.',
             'notas_cliente.max' => 'La nota del pedido no debe superar 800 caracteres.',
-            'metodo_pago.required' => 'Debes seleccionar un método de pago.',
-            'metodo_pago.in' => 'El método de pago seleccionado no es válido.',
+                        'metodo_pago.in' => 'El método de pago seleccionado no es válido.',
             'items.required' => 'Tu carrito está vacío.',
             'items.array' => 'Los productos del pedido no son válidos.',
             'items.min' => 'Agrega al menos un producto al carrito.',
@@ -172,11 +171,11 @@ class TiendaController extends Controller
             $data['tipo_entrega'],
             $data['direccion_entrega'] ?? null,
             $data['notas_cliente'] ?? null,
-            $data['metodo_pago']
+            ($data['metodo_pago'] ?? 'QR')
         );
 
         return response()->json([
-            'message' => 'Pedido recibido correctamente.',
+            'message' => 'Solicitud de pedido registrada. El pedido se confirmará cuando envíes el comprobante y el pago sea verificado.',
             'pedido' => $pedido,
             'id' => $pedido['id'],
             'codigo_seguimiento' => $pedido['codigo'],

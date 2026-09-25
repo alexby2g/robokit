@@ -48,6 +48,7 @@ class CompraController extends Controller
                 'observacion' => $data['observacion'] ?? null,
                 'created_at' => now(),
                 'updated_at' => now(),
+                ...(\Illuminate\Support\Facades\Schema::hasColumn('compra', 'estado_operacion') ? ['estado_operacion' => 'Activo'] : []),
             ]);
 
             foreach ($data['items'] as $item) {
@@ -85,6 +86,23 @@ class CompraController extends Controller
         });
 
         return response()->json(['message' => 'Compra registrada y stock incrementado.', 'id' => $id], 201);
+    }
+
+    public function updateStatus(Request $request, int $id)
+    {
+        $data = $request->validate([
+            'estado_operacion' => ['required', 'in:Activo,Finalizado'],
+        ]);
+
+        $compra = DB::table('compra')->where('id', $id)->first();
+        abort_if(!$compra, 404, 'Compra no encontrada.');
+
+        DB::table('compra')->where('id', $id)->update([
+            'estado_operacion' => $data['estado_operacion'],
+            'updated_at' => now(),
+        ]);
+
+        return response()->json(['message' => 'Estado de compra actualizado.']);
     }
 
     public function pdf(int $id, SimplePdfService $pdf)

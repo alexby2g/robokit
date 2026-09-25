@@ -14,7 +14,7 @@ class VentaService
         int $usuarioId,
         array $items,
         ?string $fecha = null,
-        string $estado = 'Entregado',
+        string $estado = 'Pendiente',
         string $canal = 'Mostrador',
         string $metodoPago = 'Efectivo'
     ): int {
@@ -25,24 +25,26 @@ class VentaService
             $pedido = [
                 'id_usuario' => $usuarioId,
                 'Total' => round(collect($detalle)->sum('subtotal'), 2),
-                'Estado' => $estado,
+                'Estado' => 'Pendiente',
                 'Fecha' => $fecha ?: now()->toDateString(),
             ];
 
             if (Schema::hasColumn('pedido', 'canal')) $pedido['canal'] = $canal;
             if (Schema::hasColumn('pedido', 'tipo_entrega')) $pedido['tipo_entrega'] = 'Mostrador';
-            if (Schema::hasColumn('pedido', 'stock_aplicado')) $pedido['stock_aplicado'] = 1;
+            if (Schema::hasColumn('pedido', 'stock_aplicado')) $pedido['stock_aplicado'] = 0;
             if (Schema::hasColumn('pedido', 'reserva_aplicada')) $pedido['reserva_aplicada'] = 0;
             if (Schema::hasColumn('pedido', 'metodo_pago')) $pedido['metodo_pago'] = $metodoPago;
+            if (Schema::hasColumn('pedido', 'estado_operacion')) $pedido['estado_operacion'] = 'Activo';
 
             $pedidoId = (int) DB::table('pedido')->insertGetId($pedido);
 
             foreach ($detalle as $linea) {
                 $this->insertarDetalle($pedidoId, $linea);
-                $this->descontarStockFisico($pedidoId, $linea, "Venta de mostrador #{$pedidoId}");
             }
 
-            $this->crearPagoInicial($pedidoId, $usuarioId, (float) $pedido['Total'], $metodoPago, 'Verificado');
+            // Toda venta de mostrador nace pendiente. El stock físico se descuenta
+            // una sola vez cuando la venta pasa a Entregado.
+            $this->crearPagoInicial($pedidoId, $usuarioId, (float) $pedido['Total'], $metodoPago, 'Pendiente');
             $this->notifications->staff('venta', 'Venta registrada', "Venta de mostrador #{$pedidoId} por Bs {$pedido['Total']}.", '/admin/pedidos', ['pedido_id' => $pedidoId]);
             return $pedidoId;
         });
@@ -74,14 +76,14 @@ class VentaService
             if (Schema::hasColumn('pedido', 'notas_cliente')) $pedido['notas_cliente'] = $nota;
             if (Schema::hasColumn('pedido', 'codigo_seguimiento')) $pedido['codigo_seguimiento'] = $codigo;
             if (Schema::hasColumn('pedido', 'stock_aplicado')) $pedido['stock_aplicado'] = 0;
-            if (Schema::hasColumn('pedido', 'reserva_aplicada')) $pedido['reserva_aplicada'] = 1;
+            if (Schema::hasColumn('pedido', 'reserva_aplicada')) $pedido['reserva_aplicada'] = 0;
             if (Schema::hasColumn('pedido', 'metodo_pago')) $pedido['metodo_pago'] = $metodoPago;
+            if (Schema::hasColumn('pedido', 'estado_operacion')) $pedido['estado_operacion'] = 'Activo';
 
             $pedidoId = (int) DB::table('pedido')->insertGetId($pedido);
 
             foreach ($detalle as $linea) {
                 $this->insertarDetalle($pedidoId, $linea);
-                $this->reservarStock($linea);
             }
 
             $this->crearPagoInicial($pedidoId, $usuarioId, (float) $pedido['Total'], $metodoPago, 'Pendiente');
@@ -129,42 +131,39 @@ class VentaService
         if (strcasecmp($nuevoEstado, 'Cancelado') === 0) {
             if ($reservaAplicada) {
                 $this->liberarReserva($pedidoId);
-                $this->actualizarFlags($pedidoId, false, false);
             }
-            DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => 'Cancelado']);
+            $this->actualizarFlags($pedidoId, false, false);
+            DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => 'Cancelado', ...$this->operationStatus('Finalizado')]);
             $this->notifications->clientByUsuario((int) $pedido->id_usuario, 'pedido', 'Pedido cancelado', "Tu pedido #{$pedidoId} fue cancelado.", '/mi-cuenta', ['pedido_id' => $pedidoId]);
             return;
         }
 
-        if (strcasecmp($actual, 'Cancelado') === 0 && strcasecmp($nuevoEstado, 'Cancelado') !== 0) {
-            $this->reaplicarReserva($pedidoId);
-            $reservaAplicada = true;
-            $stockAplicado = false;
-            $this->actualizarFlags($pedidoId, $stockAplicado, $reservaAplicada);
+        // Un pedido nuevo no debe afectar el stock visible al público. La reserva
+        // comienza recién al confirmarse (o al pasar a una etapa posterior).
+        $estadosReservados = ['Confirmado', 'Preparando', 'Listo para entrega', 'En camino'];
+        if (in_array($nuevoEstado, $estadosReservados, true)) {
+            $this->exigirPagoVerificado($pedidoId);
+            if (!$reservaAplicada) {
+                $this->reaplicarReserva($pedidoId);
+                $reservaAplicada = true;
+                $this->actualizarFlags($pedidoId, false, true);
+            }
+        } elseif (strcasecmp($nuevoEstado, 'Nuevo') === 0 && $reservaAplicada) {
+            $this->liberarReserva($pedidoId);
+            $reservaAplicada = false;
+            $this->actualizarFlags($pedidoId, false, false);
         }
 
         if (strcasecmp($nuevoEstado, 'Entregado') === 0 && !$stockAplicado) {
-            if (Schema::hasTable('pagos')) {
-                $pago = DB::table('pagos')->where('pedido_id', $pedidoId)->first();
-                if ($pago && $pago->metodo !== 'Efectivo' && $pago->estado !== 'Verificado') {
-                    throw ValidationException::withMessages(['Estado' => 'Debes verificar el pago antes de marcar el pedido como entregado.']);
-                }
-                if ($pago && $pago->metodo === 'Efectivo' && $pago->estado !== 'Verificado') {
-                    DB::table('pagos')->where('id', $pago->id)->update([
-                        'estado' => 'Verificado',
-                        'verificado_at' => now(),
-                        'updated_at' => now(),
-                    ]);
-                    $this->notifications->clientByUsuario((int) $pedido->id_usuario, 'pago', 'Pago en efectivo confirmado', "El pago del pedido #{$pedidoId} fue confirmado al entregar.", '/mi-cuenta', ['pedido_id' => $pedidoId]);
-                }
-            }
+            $this->exigirPagoVerificado($pedidoId);
             if (!$reservaAplicada) {
                 $this->reaplicarReserva($pedidoId);
+                $reservaAplicada = true;
             }
             $this->finalizarReservaComoSalida($pedidoId);
             $this->actualizarFlags($pedidoId, true, false);
 
-            $updates = ['Estado' => 'Entregado'];
+            $updates = ['Estado' => 'Entregado', ...$this->operationStatus('Finalizado')];
             if (Schema::hasColumn('pedido', 'fecha_entregado')) $updates['fecha_entregado'] = now();
             DB::table('pedido')->where('id', $pedidoId)->update($updates);
             $this->notifications->clientByUsuario((int) $pedido->id_usuario, 'pedido', 'Pedido entregado', "Tu pedido #{$pedidoId} fue entregado.", '/mi-cuenta', ['pedido_id' => $pedidoId]);
@@ -172,26 +171,69 @@ class VentaService
             return;
         }
 
-        DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => $nuevoEstado]);
+        DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => $nuevoEstado, ...$this->operationStatus('Activo')]);
         $this->notifications->clientByUsuario((int) $pedido->id_usuario, 'pedido', 'Estado de pedido actualizado', "Tu pedido #{$pedidoId} ahora está: {$nuevoEstado}.", '/mi-cuenta', ['pedido_id' => $pedidoId, 'estado' => $nuevoEstado]);
     }
 
     private function cambiarEstadoMostrador(object $pedido, string $nuevoEstado): void
     {
         $pedidoId = (int) $pedido->id;
-        $antesCancelado = mb_strtolower((string) $pedido->Estado) === 'cancelado';
-        $ahoraCancelado = mb_strtolower($nuevoEstado) === 'cancelado';
-        $stockAplicado = Schema::hasColumn('pedido', 'stock_aplicado') ? (bool) $pedido->stock_aplicado : !$antesCancelado;
+        $actual = (string) $pedido->Estado;
+        $stockAplicado = Schema::hasColumn('pedido', 'stock_aplicado') ? (bool) $pedido->stock_aplicado : false;
 
-        if (!$antesCancelado && $ahoraCancelado && $stockAplicado) {
-            $this->restaurarStock($pedidoId);
-            $this->actualizarFlags($pedidoId, false, false);
-        } elseif ($antesCancelado && !$ahoraCancelado && !$stockAplicado) {
-            $this->reaplicarStock($pedidoId);
-            $this->actualizarFlags($pedidoId, true, false);
+        if (strcasecmp($actual, 'Entregado') === 0 && strcasecmp($nuevoEstado, 'Entregado') !== 0) {
+            throw ValidationException::withMessages(['Estado' => 'Una venta entregada ya cerró inventario y no puede volver a un estado anterior.']);
         }
 
-        DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => $nuevoEstado]);
+        if (strcasecmp($nuevoEstado, 'Cancelado') === 0) {
+            // Si nunca fue entregada, no se repone stock porque nunca se descontó.
+            DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => 'Cancelado', ...$this->operationStatus('Finalizado')]);
+            return;
+        }
+
+        if (strcasecmp($nuevoEstado, 'Entregado') === 0 && !$stockAplicado) {
+            $this->exigirPagoVerificado($pedidoId);
+            $this->descontarPedidoFisico($pedidoId, "Venta de mostrador #{$pedidoId} entregada");
+            $this->actualizarFlags($pedidoId, true, false);
+
+            $updates = ['Estado' => 'Entregado', ...$this->operationStatus('Finalizado')];
+            if (Schema::hasColumn('pedido', 'fecha_entregado')) $updates['fecha_entregado'] = now();
+            DB::table('pedido')->where('id', $pedidoId)->update($updates);
+            return;
+        }
+
+        DB::table('pedido')->where('id', $pedidoId)->update(['Estado' => $nuevoEstado, ...$this->operationStatus('Activo')]);
+    }
+
+    private function exigirPagoVerificado(int $pedidoId): void
+    {
+        if (!Schema::hasTable('pagos')) return;
+        $pago = DB::table('pagos')->where('pedido_id', $pedidoId)->first();
+        if (!$pago || strcasecmp((string) $pago->estado, 'Verificado') !== 0) {
+            throw ValidationException::withMessages(['Estado' => 'Debes verificar el pago antes de confirmar o entregar la venta.']);
+        }
+    }
+
+    private function descontarPedidoFisico(int $pedidoId, string $motivo): void
+    {
+        foreach ($this->itemsPedido($pedidoId) as $item) {
+            $producto = DB::table('producto')->where('id', $item->id_producto)->lockForUpdate()->first();
+            if (!$producto) throw ValidationException::withMessages(['Estado' => 'Uno de los productos de la venta ya no existe.']);
+
+            $reservado = Schema::hasColumn('producto', 'stock_reservado') ? (int) ($producto->stock_reservado ?? 0) : 0;
+            $disponible = max(0, (int) $producto->Stock - $reservado);
+            if ($disponible < (int) $item->cantidad) {
+                throw ValidationException::withMessages(['Estado' => "Stock disponible insuficiente para {$producto->Nombre}. Disponible: {$disponible}."]);
+            }
+        }
+
+        foreach ($this->itemsPedido($pedidoId) as $item) {
+            $producto = DB::table('producto')->where('id', $item->id_producto)->lockForUpdate()->first();
+            $anterior = (int) $producto->Stock;
+            $nuevo = $anterior - (int) $item->cantidad;
+            DB::table('producto')->where('id', $producto->id)->update(['Stock' => $nuevo]);
+            $this->registrarMovimiento($producto->id, 'salida', (int) $item->cantidad, $anterior, $nuevo, $motivo);
+        }
     }
 
     private function prepararDetalle(array $items, bool $aceptarPrecioCliente): array
@@ -374,6 +416,13 @@ class VentaService
         if (Schema::hasColumn('pedido', 'stock_aplicado')) $update['stock_aplicado'] = $stockAplicado ? 1 : 0;
         if (Schema::hasColumn('pedido', 'reserva_aplicada')) $update['reserva_aplicada'] = $reservaAplicada ? 1 : 0;
         if ($update) DB::table('pedido')->where('id', $pedidoId)->update($update);
+    }
+
+    private function operationStatus(string $estado): array
+    {
+        return Schema::hasColumn('pedido', 'estado_operacion')
+            ? ['estado_operacion' => $estado]
+            : [];
     }
 
     private function crearPagoInicial(int $pedidoId, int $usuarioId, float $monto, string $metodo, string $estado): void

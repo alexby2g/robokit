@@ -13,6 +13,7 @@
             <q-img :src="productImage(p)" height="190px" fit="contain" class="bg-black"><template #error><div class="absolute-full flex flex-center column text-muted"><q-icon name="image_not_supported" size="48px"/><div>Sin imagen</div></div></template></q-img>
             <q-badge class="absolute-top-left q-ma-sm" :color="statusColor(p.estado_publicacion)">{{ p.estado_publicacion || 'Publicado' }}</q-badge>
             <q-badge v-if="p.destacado" class="absolute-top-right q-ma-sm" color="purple-7">Destacado</q-badge>
+            <q-badge class="absolute-bottom-left q-ma-sm" color="blue-grey-8" text-color="white"><q-icon name="photo_library" class="q-mr-xs"/>{{ (p.imagenes || []).length }} {{ (p.imagenes || []).length === 1 ? 'imagen' : 'imágenes' }}</q-badge>
           </div>
           <q-card-section class="col">
             <div class="row items-start justify-between"><div class="text-subtitle1 text-weight-bold ellipsis" style="max-width:70%">{{p.Nombre}}</div><q-chip dense :color="Number(p.Disponible ?? p.Stock)<=5?'orange-10':'green-10'" text-color="white">{{p.Disponible ?? p.Stock}} disp.</q-chip></div>

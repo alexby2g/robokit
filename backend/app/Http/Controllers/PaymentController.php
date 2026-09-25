@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Services\NotificationService;
 use App\Services\MediaStorage;
+use App\Services\VentaService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -13,6 +14,7 @@ class PaymentController extends Controller
     public function __construct(
         private NotificationService $notifications,
         private MediaStorage $media,
+        private VentaService $ventas,
     ) {}
 
     public function index(Request $request)
@@ -63,6 +65,10 @@ class PaymentController extends Controller
             'comprobante.mimes' => 'El comprobante debe ser JPG, PNG, WEBP o PDF.',
         ]);
 
+        if (in_array($data['metodo'], ['QR', 'Transferencia'], true) && !$request->hasFile('comprobante')) {
+            return response()->json(['message' => 'Debes adjuntar el comprobante de pago para enviar la solicitud de verificación.'], 422);
+        }
+
         $pago = DB::table('pagos')->where('pedido_id', $pedidoId)->first();
         $path = $pago->comprobante ?? null;
         if ($request->hasFile('comprobante')) {
@@ -93,7 +99,7 @@ class PaymentController extends Controller
         DB::table('pedido')->where('id', $pedidoId)->update(['metodo_pago' => $data['metodo']]);
 
         if ($data['metodo'] !== 'Efectivo') {
-            $this->notifications->staff('pago_reportado', 'Pago reportado', "Pedido #{$pedidoId} reportó un pago de Bs {$pedido->Total}.", '/admin/pagos', ['pedido_id' => $pedidoId]);
+            $this->notifications->staff('pago_reportado', 'Pago reportado', "Pedido #{$pedidoId} reportó un pago de Bs {$pedido->Total}.", '/admin/pedidos-online', ['pedido_id' => $pedidoId]);
         }
 
         return response()->json(['message' => $data['metodo'] === 'Efectivo' ? 'Pago en efectivo registrado como pendiente.' : 'Pago reportado. Espera la verificación del personal.']);
@@ -148,21 +154,27 @@ class PaymentController extends Controller
         $pedido = DB::table('pedido')->where('id', $pago->pedido_id)->first();
         abort_if(!$pedido, 404, 'Pedido no encontrado.');
 
-        DB::table('pagos')->where('id', $id)->update([
-            'estado' => $data['estado'],
-            'nota' => $data['nota'] ?? $pago->nota,
-            'verificado_por' => in_array($data['estado'], ['Verificado', 'Rechazado'], true) ? $request->user()->id : $pago->verificado_por,
-            'verificado_at' => $data['estado'] === 'Verificado' ? now() : ($data['estado'] === 'Rechazado' ? null : $pago->verificado_at),
-            'updated_at' => now(),
-        ]);
+        DB::transaction(function () use ($data, $id, $pago, $pedido, $request) {
+            DB::table('pagos')->where('id', $id)->update([
+                'estado' => $data['estado'],
+                'nota' => $data['nota'] ?? $pago->nota,
+                'verificado_por' => in_array($data['estado'], ['Verificado', 'Rechazado'], true) ? $request->user()->id : $pago->verificado_por,
+                'verificado_at' => $data['estado'] === 'Verificado' ? now() : ($data['estado'] === 'Rechazado' ? null : $pago->verificado_at),
+                'updated_at' => now(),
+            ]);
 
-        if ($data['estado'] === 'Verificado' && $pedido->Estado === 'Nuevo') {
-            DB::table('pedido')->where('id', $pedido->id)->update(['Estado' => 'Confirmado']);
-        }
+            if ($data['estado'] === 'Verificado' && strcasecmp((string) ($pedido->canal ?? ''), 'Online') === 0) {
+                if (!in_array((string) $pedido->Estado, ['Confirmado', 'Preparando', 'Listo para entrega', 'En camino', 'Entregado', 'Cancelado'], true)) {
+                    $this->ventas->cambiarEstado((int) $pedido->id, 'Confirmado');
+                }
+            }
+        });
+
+        $pedido = DB::table('pedido')->where('id', $pago->pedido_id)->first();
 
         $title = $data['estado'] === 'Verificado' ? 'Pago verificado' : ($data['estado'] === 'Rechazado' ? 'Pago rechazado' : 'Estado de pago actualizado');
         $this->notifications->clientByUsuario((int) $pedido->id_usuario, 'pago', $title, "Pedido #{$pedido->id}: {$data['estado']}.", '/mi-cuenta', ['pedido_id' => $pedido->id, 'pago_id' => $id]);
 
-        return response()->json(['message' => 'Estado del pago actualizado.']);
+        return response()->json(['message' => $data['estado'] === 'Verificado' ? 'Pago verificado y pedido confirmado.' : 'Estado del pago actualizado.']);
     }
 }

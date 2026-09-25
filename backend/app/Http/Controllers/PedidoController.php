@@ -4,12 +4,14 @@ namespace App\Http\Controllers;
 
 use App\Services\SimplePdfService;
 use App\Services\VentaService;
+use App\Services\MediaStorage;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class PedidoController extends Controller
 {
+    public function __construct(private MediaStorage $media) {}
     public function index(Request $request)
     {
         $clienteSql = DB::connection()->getDriverName() === 'pgsql'
@@ -65,15 +67,68 @@ class PedidoController extends Controller
             'metodo_pago' => ['nullable', 'string', 'in:Efectivo,QR,Transferencia'],
         ]);
 
-        $id = $ventas->crear((int) $data['id_usuario'], $data['items'], $data['Fecha'] ?? null, $data['Estado'] ?? 'Entregado', 'Mostrador', $data['metodo_pago'] ?? 'Efectivo');
-        return response()->json(['message' => 'Venta registrada y stock actualizado.', 'id' => $id], 201);
+        $id = $ventas->crear((int) $data['id_usuario'], $data['items'], $data['Fecha'] ?? null, 'Pendiente', 'Mostrador', $data['metodo_pago'] ?? 'Efectivo');
+        return response()->json(['message' => 'Venta registrada como pendiente. El stock se descontará al entregar.', 'id' => $id], 201);
     }
 
     public function update(Request $request, int $id, VentaService $ventas)
     {
-        $data = $request->validate(['Estado' => ['required', 'string', 'max:50']]);
+        $data = $request->validate([
+            'Estado' => ['required', 'string', 'max:50'],
+            'evidencia_entrega' => ['nullable', 'file', 'max:12288', 'mimes:jpg,jpeg,png,webp'],
+        ], [
+            'evidencia_entrega.max' => 'La evidencia no debe superar 12 MB.',
+            'evidencia_entrega.mimes' => 'La evidencia de entrega debe ser una fotografía JPG, PNG o WEBP.',
+        ]);
+
+        $pedido = DB::table('pedido')->where('id', $id)->first();
+        abort_if(!$pedido, 404, 'Pedido no encontrado.');
+
+        if (strcasecmp($data['Estado'], 'Entregado') === 0) {
+            if (Schema::hasTable('pagos')) {
+                $pago = DB::table('pagos')->where('pedido_id', $id)->first();
+                if (!$pago || strcasecmp((string) $pago->estado, 'Verificado') !== 0) {
+                    return response()->json(['message' => 'Debes verificar el pago antes de marcar el pedido como entregado.'], 422);
+                }
+            }
+
+            $tieneEvidencia = Schema::hasColumn('pedido', 'evidencia_entrega') && !empty($pedido->evidencia_entrega);
+            if (!$tieneEvidencia && !$request->hasFile('evidencia_entrega')) {
+                return response()->json(['message' => 'Debes adjuntar una fotografía como evidencia antes de marcar el pedido como entregado.'], 422);
+            }
+
+            if ($request->hasFile('evidencia_entrega')) {
+                abort_unless(Schema::hasColumn('pedido', 'evidencia_entrega'), 422, 'Ejecuta la migración de evidencia de entrega.');
+                if (!empty($pedido->evidencia_entrega)) $this->media->deletePrivate($pedido->evidencia_entrega);
+                $path = $this->media->storePrivate($request->file('evidencia_entrega'), 'entregas');
+                $update = ['evidencia_entrega' => $path];
+                if (Schema::hasColumn('pedido', 'evidencia_entrega_at')) $update['evidencia_entrega_at'] = now();
+                DB::table('pedido')->where('id', $id)->update($update);
+            }
+        }
+
         $ventas->cambiarEstado($id, $data['Estado']);
         return response()->json(['message' => 'Estado actualizado.']);
+    }
+
+    public function deliveryProof(Request $request, int $id)
+    {
+        abort_unless(Schema::hasColumn('pedido', 'evidencia_entrega'), 404);
+        $pedido = DB::table('pedido')->where('id', $id)->first();
+        abort_if(!$pedido || empty($pedido->evidencia_entrega), 404, 'Este pedido no tiene evidencia de entrega.');
+
+        try {
+            $file = $this->media->privateFile($pedido->evidencia_entrega);
+        } catch (\RuntimeException) {
+            abort(404, 'Evidencia no encontrada.');
+        }
+
+        return response($file['contents'], 200, [
+            'Content-Type' => $file['mime'],
+            'Content-Disposition' => 'inline; filename="'.$file['filename'].'"',
+            'Cache-Control' => 'private, no-store, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function pdf(int $id, SimplePdfService $pdf)

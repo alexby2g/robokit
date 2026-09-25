@@ -11,8 +11,10 @@
         <div class="col-12 col-md-4 text-right"><q-btn flat color="cyan-4" icon="refresh" label="Actualizar" :loading="loading" @click="load" /></div>
       </q-card-section>
       <q-table :rows="filtered" :columns="columns" row-key="id" dark flat class="table-dark" :loading="loading">
+        <template #body-cell-fecha="p"><q-td :props="p">{{ formatDate(p.row.fecha) }}</q-td></template>
         <template #body-cell-total="p"><q-td :props="p" class="text-amber-3 text-weight-bold">Bs {{ money(p.row.total) }}</q-td></template>
-        <template #body-cell-acciones="p"><q-td :props="p"><q-btn flat round dense color="cyan-4" icon="picture_as_pdf" @click="pdf(p.row)" /><q-btn flat round dense color="grey-4" icon="visibility" @click="detail(p.row)" /></q-td></template>
+        <template #body-cell-estado_operacion="p"><q-td :props="p"><q-chip dense :color="p.row.estado_operacion==='Finalizado'?'green-8':'blue-8'" text-color="white">{{p.row.estado_operacion||'Activo'}}</q-chip></q-td></template>
+        <template #body-cell-acciones="p"><q-td :props="p"><q-btn flat round dense color="cyan-4" icon="picture_as_pdf" @click="pdf(p.row)" /><q-btn flat round dense color="grey-4" icon="visibility" @click="detail(p.row)" /><q-btn v-if="(p.row.estado_operacion||'Activo')==='Activo'" flat round dense color="green-4" icon="task_alt" @click="finish(p.row)"><q-tooltip>Finalizar compra</q-tooltip></q-btn></q-td></template>
       </q-table>
     </q-card>
 
@@ -41,7 +43,7 @@
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="detailDialog"><q-card class="panel text-white" style="width:700px;max-width:94vw"><q-card-section class="row items-center justify-between"><div class="text-h6">Compra #{{ selected?.id }}</div><q-btn flat round icon="close" v-close-popup /></q-card-section><q-separator dark/><q-card-section><div><b>Proveedor:</b> {{ selected?.proveedor }}</div><div><b>Documento:</b> {{ selected?.nro_documento || '-' }}</div><div><b>Fecha:</b> {{ selected?.fecha }}</div><div class="q-mt-md"><q-list separator dark><q-item v-for="i in selected?.items || selected?.productos || []" :key="i.id"><q-item-section><q-item-label>{{ i.Nombre || i.producto?.Nombre || `Producto #${i.id_producto}` }}</q-item-label><q-item-label caption>{{ i.cantidad }} × Bs {{ money(i.costo_unitario) }}</q-item-label></q-item-section><q-item-section side>Bs {{ money(i.subtotal || i.cantidad * i.costo_unitario) }}</q-item-section></q-item></q-list></div></q-card-section></q-card></q-dialog>
+    <q-dialog v-model="detailDialog"><q-card class="panel text-white" style="width:700px;max-width:94vw"><q-card-section class="row items-center justify-between"><div class="text-h6">Compra #{{ selected?.id }}</div><q-btn flat round icon="close" v-close-popup /></q-card-section><q-separator dark/><q-card-section><div><b>Proveedor:</b> {{ selected?.proveedor }}</div><div><b>Documento:</b> {{ selected?.nro_documento || '-' }}</div><div><b>Fecha:</b> {{ formatDate(selected?.fecha) }}</div><div class="q-mt-md"><div class="text-caption text-grey-5 q-mb-sm">Estado: <q-chip dense :color="selected?.estado_operacion==='Finalizado'?'green-8':'blue-8'" text-color="white">{{selected?.estado_operacion||'Activo'}}</q-chip></div><q-markup-table dark flat bordered separator="cell"><thead><tr><th class="text-left">Producto</th><th class="text-right">Cantidad</th><th class="text-right">Costo unitario</th><th class="text-right">Subtotal</th></tr></thead><tbody><tr v-for="i in selected?.items || selected?.productos || []" :key="i.id || `${i.id_compra}-${i.id_producto}`"><td>{{ i.Nombre || i.producto?.Nombre || `Producto #${i.id_producto}` }}</td><td class="text-right">{{i.cantidad}}</td><td class="text-right">Bs {{money(i.costo_unitario)}}</td><td class="text-right text-amber-3">Bs {{ money(i.subtotal || i.cantidad * i.costo_unitario) }}</td></tr></tbody></q-markup-table></div></q-card-section></q-card></q-dialog>
   </q-page>
 </template>
 
@@ -52,11 +54,12 @@ import api from '../services/api'
 import { downloadPdf } from '../utils/download'
 const $q = useQuasar()
 const rows=ref([]), products=ref([]), loading=ref(false), saving=ref(false), dialog=ref(false), detailDialog=ref(false), selected=ref(null), search=ref('')
-const columns=[{name:'id',label:'#',field:'id',align:'left'},{name:'fecha',label:'Fecha',field:'fecha',align:'left'},{name:'proveedor',label:'Proveedor',field:'proveedor',align:'left'},{name:'nro_documento',label:'Documento',field:'nro_documento',align:'left'},{name:'total',label:'Total',field:'total',align:'right'},{name:'acciones',label:'Acciones',field:'acciones',align:'center'}]
+const columns=[{name:'acciones',label:'Acciones',field:'acciones',align:'center'},{name:'id',label:'#',field:'id',align:'left'},{name:'fecha',label:'Fecha',field:'fecha',align:'left'},{name:'proveedor',label:'Proveedor',field:'proveedor',align:'left'},{name:'nro_documento',label:'Documento',field:'nro_documento',align:'left'},{name:'estado_operacion',label:'Estado',field:'estado_operacion',align:'center'},{name:'total',label:'Total',field:'total',align:'right'}]
 const today=()=>new Date().toISOString().slice(0,10)
 const newForm=()=>({proveedor:'',nro_documento:'',fecha:today(),observacion:'',items:[{id_producto:null,cantidad:1,costo_unitario:0}]})
 const form=ref(newForm())
 const money=(v)=>Number(v||0).toFixed(2)
+const formatDate=(v)=>{if(!v)return '-';const [y,m,d]=String(v).slice(0,10).split('-');return y&&m&&d?`${d}/${m}/${y}`:v}
 const total=computed(()=>form.value.items.reduce((s,i)=>s+Number(i.cantidad||0)*Number(i.costo_unitario||0),0))
 const filtered=computed(()=>{const q=search.value.toLowerCase().trim();return !q?rows.value:rows.value.filter(x=>`${x.proveedor||''} ${x.nro_documento||''}`.toLowerCase().includes(q))})
 const load=async()=>{loading.value=true;try{const [a,b]=await Promise.all([api.get('/compras'),api.get('/productos')]);rows.value=a.data.compras||a.data.data||a.data||[];products.value=b.data.productos||[]}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudieron cargar las compras'})}finally{loading.value=false}}
@@ -64,5 +67,6 @@ const openNew=()=>{form.value=newForm();dialog.value=true}; const addItem=()=>fo
 const save=async()=>{if(!form.value.proveedor||!form.value.fecha||form.value.items.some(i=>!i.id_producto||Number(i.cantidad)<1)){return $q.notify({type:'warning',message:'Completa proveedor, fecha y productos.'})}saving.value=true;try{await api.post('/compras',form.value);dialog.value=false;$q.notify({type:'positive',message:'Compra registrada y stock actualizado.'});await load()}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo registrar la compra'})}finally{saving.value=false}}
 const pdf=async(row)=>{try{await downloadPdf(`/compras/${row.id}/pdf`,`compra-${row.id}.pdf`)}catch{$q.notify({type:'negative',message:'No se pudo generar el PDF.'})}}
 const detail=async(row)=>{selected.value=row;try{const r=await api.get(`/compras/${row.id}`);selected.value=r.data.compra||r.data.data||r.data}catch{selected.value=row}detailDialog.value=true}
+const finish=async(row)=>{try{await api.put(`/compras/${row.id}/estado`,{estado_operacion:'Finalizado'});$q.notify({type:'positive',message:'Compra finalizada.'});await load()}catch(e){$q.notify({type:'negative',message:e.userMessage||'No se pudo finalizar la compra.'})}}
 onMounted(load)
 </script>

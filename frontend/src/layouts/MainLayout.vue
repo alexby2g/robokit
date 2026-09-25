@@ -31,7 +31,10 @@
           </q-menu>
         </q-btn>
 
-        <q-btn-dropdown flat no-caps class="q-ml-sm" color="white" :label="adminName">
+        <q-btn flat icon="logout" label="Cerrar sesión" color="red-3" class="q-ml-sm gt-sm" @click="signOut" />
+        <q-btn flat round icon="logout" color="red-3" class="q-ml-xs lt-md" @click="signOut"><q-tooltip>Cerrar sesión</q-tooltip></q-btn>
+
+        <q-btn-dropdown flat no-caps class="q-ml-sm gt-xs" color="white" :label="adminName">
           <q-list style="min-width: 210px">
             <q-item><q-item-section><q-item-label>{{ adminName }}</q-item-label><q-item-label caption>{{ roleLabel }}</q-item-label></q-item-section></q-item>
             <q-separator />
@@ -95,7 +98,6 @@ const groups=[
   {label:'Operaciones',caption:'Solicitudes, ventas y pagos',icon:'receipt_long',items:[
     {title:'Pedidos online',caption:'Solicitudes del catálogo',icon:'shopping_bag',path:'/admin/pedidos-online',roles:['admin','trabajador','caja','almacen']},
     {title:'Ventas',caption:'Ventas de mostrador',icon:'point_of_sale',path:'/admin/pedidos',roles:['admin','trabajador','caja']},
-    {title:'Pagos',caption:'Reportados y verificados',icon:'payments',path:'/admin/pagos',roles:['admin','trabajador','caja']},
     {title:'Clientes',caption:'Datos e historial',icon:'groups',path:'/admin/clientes',roles:['admin','trabajador','caja']},
   ]},
   {label:'Inventario',caption:'Stock y entradas de mercadería',icon:'inventory_2',items:[
